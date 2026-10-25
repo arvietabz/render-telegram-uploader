@@ -4,6 +4,28 @@ import shutil
 import subprocess
 import re
 from datetime import datetime
+import threading
+from flask import Flask
+
+# --- Add a mini Flask server for Render Web Service ---
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+  return "Bot is alive!"
+
+
+def run_web():
+  port = int(os.environ.get("PORT", 10000))
+  app.run(host="0.0.0.0", port=port)
+
+
+# Start the web server in a background thread so it doesn't block the bot
+threading.Thread(target=run_web, daemon=True).start()
+# -----------------------------------------------------
+
+# (Your bot startup and patch logic continues below...)
 
 # 1. Read credentials securely from Render Environment Variables
 try:
