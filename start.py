@@ -82,8 +82,13 @@ credentials = {
     "DUMP_ID": DUMP_ID,
 }
 
-cred_path = os.path.join(leecher_dir, "credentials.json")
-with open(cred_path, "w") as file:
+# Fix: Create the hardcoded /content/ directory that the original Colab script expects
+os.makedirs("/content/Telegram-Leecher", exist_ok=True)
+with open("/content/Telegram-Leecher/credentials.json", "w") as file:
+  file.write(json.dumps(credentials))
+
+# Also write to local repo path just in case
+with open(os.path.join(leecher_dir, "credentials.json"), "w") as file:
   file.write(json.dumps(credentials))
 
 # Filenames built with underscores
