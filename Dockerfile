@@ -17,7 +17,9 @@ RUN git clone https://github.com/XronTrix10/Telegram-Leecher.git /app/Telegram-L
 COPY requirements.txt /app/requirements.txt
 RUN pip3 install --no-cache-dir -r requirements.txt
 RUN pip3 install --no-cache-dir -r /app/Telegram-Leecher/requirements.txt
-RUN pip3 install --no-cache-dir --force-reinstall pyrofork tgcrypto
+
+# Install compatible MoviePy and force-reinstall Pyrofork/Tgcrypto
+RUN pip3 install --no-cache-dir "moviepy<2.0.0" pyrofork tgcrypto --force-reinstall
 
 # Copy entrypoint script
 COPY start.py /app/start.py
