@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies required for downloading and processing files
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     aria2 \
@@ -10,19 +10,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy your start script and requirements into the container
-COPY requirements.txt /app/requirements.txt
-COPY start.py /app/start.py
-
-# Install Flask and other root requirements first
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Clone the Telegram Leecher repository into a separate folder so it doesn't overwrite your files
+# Clone repository during build time
 RUN git clone https://github.com/XronTrix10/Telegram-Leecher.git /app/Telegram-Leecher
 
-# Install bot requirements and force-reinstall Pyrofork/Tgcrypto
+# Install Python requirements during build time
+COPY requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 RUN pip3 install --no-cache-dir -r /app/Telegram-Leecher/requirements.txt
 RUN pip3 install --no-cache-dir --force-reinstall pyrofork tgcrypto
 
-# Run the startup script
+# Copy entrypoint script
+COPY start.py /app/start.py
+
 CMD ["python3", "start.py"]
