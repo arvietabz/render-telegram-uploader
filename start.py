@@ -1,63 +1,76 @@
-import os
 import json
+import os
+import re
 import shutil
 import subprocess
-import re
-from datetime import datetime
 import threading
+from datetime import datetime
 from flask import Flask
 
-# --- Add a mini Flask server for Render Web Service ---
+print(
+    "🌐 [1/4] Initializing Flask Web Server for Render...",
+    flush=True,
+)
+
 app = Flask(__name__)
 
 
 @app.route("/")
 def home():
-  return "Bot is alive!"
+  return "Telegram Leech Bot is active and running!"
 
 
 def run_web():
   port = int(os.environ.get("PORT", 10000))
+  print(f"🌐 Flask web server listening on port {port}", flush=True)
   app.run(host="0.0.0.0", port=port)
 
 
-# Start the web server in a background thread so it doesn't block the bot
+# Start the web server immediately in a background thread
 threading.Thread(target=run_web, daemon=True).start()
-# -----------------------------------------------------
 
-# (Your bot startup and patch logic continues below...)
+print(
+    "⚙️ [2/4] Reading environment variables and configuration...", flush=True
+)
 
-# 1. Read credentials securely from Render Environment Variables
+# Read credentials safely from Render Environment Variables
 try:
-    API_ID = int(os.environ.get("API_ID", 0))
-    API_HASH = os.environ.get("API_HASH", "")
-    BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-    USER_ID = int(os.environ.get("USER_ID", 0))
-    DUMP_ID = int(os.environ.get("DUMP_ID", 0))
+  API_ID = int(os.environ.get("API_ID", 0))
+  API_HASH = os.environ.get("API_HASH", "")
+  BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+  USER_ID = int(os.environ.get("USER_ID", 0))
+  DUMP_ID = int(os.environ.get("DUMP_ID", 0))
 except ValueError:
-    print("❌ Error: One or more environment variables have invalid types.")
-    exit(1)
+  print("❌ Error: One or more environment variables have invalid types.")
+  exit(1)
 
 if not all([API_ID, API_HASH, BOT_TOKEN, USER_ID, DUMP_ID]):
-    print("❌ Error: Missing required environment variables!")
-    exit(1)
+  print("❌ Error: Missing required environment variables!")
+  exit(1)
 
 if len(str(DUMP_ID)) == 10 and "-100" not in str(DUMP_ID):
-    DUMP_ID = int("-100" + str(DUMP_ID))
+  DUMP_ID = int("-100" + str(DUMP_ID))
 
-# 2. Workspace setup
+# Workspace setup
 app_dir = "/app"
 leecher_dir = os.path.join(app_dir, "Telegram-Leecher")
 
 if os.path.exists(leecher_dir):
-    shutil.rmtree(leecher_dir)
+  shutil.rmtree(leecher_dir)
 
-print("🚀 Cloning Telegram-Leecher repository...")
-subprocess.run(f"git clone https://github.com/XronTrix10/Telegram-Leecher {leecher_dir}", shell=True, check=True)
+print(
+    "🚀 [3/4] Cloning Telegram-Leecher repository and applying patches...",
+    flush=True,
+)
+subprocess.run(
+    f"git clone https://github.com/XronTrix10/Telegram-Leecher {leecher_dir}",
+    shell=True,
+    check=True,
+)
 subprocess.run(f"bash {leecher_dir}/setup.sh", shell=True)
 subprocess.run(f"pip3 install -r {leecher_dir}/requirements.txt", shell=True)
 
-# Replace old Pyrogram with pyrofork (supports new 64-bit channel IDs)
+# Replace old Pyrogram with pyrofork
 subprocess.run("pip3 uninstall -y pyrogram pyrofork kurigram", shell=True)
 subprocess.run("pip3 install --force-reinstall pyrofork tgcrypto", shell=True)
 
@@ -71,29 +84,29 @@ credentials = {
 
 cred_path = os.path.join(leecher_dir, "credentials.json")
 with open(cred_path, "w") as file:
-    file.write(json.dumps(credentials))
+  file.write(json.dumps(credentials))
 
-# Filenames are built with chr(95) (underscore) so they can't get mangled
+# Filenames built with underscores
 us = chr(95)
 pkg = os.path.join(leecher_dir, "colab" + us + "leecher/")
 
 # PATCH 1 - Python event loop fix
-init_path = pkg + us*2 + "init" + us*2 + ".py"
+init_path = pkg + us * 2 + "init" + us * 2 + ".py"
 with open(init_path) as f:
-    src = f.read()
+  src = f.read()
 
 if "set_event_loop" not in src:
-    src = src.replace("from uvloop import install", "install = lambda: None")
-    src = "import asyncio\nasyncio.set_event_loop(asyncio.new_event_loop())\n" + src
-    with open(init_path, "w") as f:
-        f.write(src)
+  src = src.replace("from uvloop import install", "install = lambda: None")
+  src = "import asyncio\nasyncio.set_event_loop(asyncio.new_event_loop())\n" + src
+  with open(init_path, "w") as f:
+    f.write(src)
 
-# PATCH 2 - any link works without /tupload, single "Regular" button
-main_path = pkg + us*2 + "main" + us*2 + ".py"
+# PATCH 2 - Link handler patch
+main_path = pkg + us * 2 + "main" + us * 2 + ".py"
 with open(main_path) as f:
-    code = f.read()
+  code = f.read()
 
-NEW_HANDLER = r'''@colab_bot.on_message(filters.create(isLink) & ~filters.photo & filters.private)
+NEW_HANDLER = r"""@colab_bot.on_message(filters.create(isLink) & ~filters.photo & filters.private)
 async def handle_url(client, message):
     global BOT, src_request_msg
 
@@ -125,37 +138,47 @@ async def handle_url(client, message):
         await message.reply_text(
             "<i>I am Already Working ! Please Wait Until I finish 😣!!</i>"
         )
-'''
+"""
 
 if "link(s) ready" not in code:
-    pattern = re.compile(r"@colab_bot\.on_message\(filters\.create\(isLink\).*?(?=@colab_bot\.on_callback_query\(\))", re.S)
-    code, n = pattern.subn(lambda m: NEW_HANDLER, code, count=1)
-    print("Link handler patched:", n == 1)
-    with open(main_path, "w") as f:
-        f.write(code)
+  pattern = re.compile(
+      r"@colab_bot\.on_message\(filters\.create\(isLink\).*?(?=@colab_bot\.on_callback_query\(\))",
+      re.S,
+  )
+  code, n = pattern.subn(lambda m: NEW_HANDLER, code, count=1)
+  with open(main_path, "w") as f:
+    f.write(code)
 
-# PATCH 3 - remove Cancel button, and Git/Channel/Group buttons
+
 def edit_file(path, fn):
-    with open(path) as f:
-        text = f.read()
-    with open(path, "w") as f:
-        f.write(fn(text))
+  with open(path) as f:
+    text = f.read()
+  with open(path, "w") as f:
+    f.write(fn(text))
 
-# no Cancel button on the status bar
-edit_file(pkg + "utility/helper.py", lambda t: re.sub(
-    r"def keyboard\(\):.*\Z", "def keyboard():\n    return None\n", t, flags=re.S))
 
-# no Cancel button on the "Starting task" message
-edit_file(main_path, lambda t: re.sub(
-    r'reply_markup=InlineKeyboardMarkup\(\s*\[\s*\[InlineKeyboardButton\("Cancel ❌", callback_data="cancel"\)\],\s*\]\s*\),\s*',
-    "", t))
+# PATCH 3 - Button modifications
+edit_file(
+    pkg + "utility/helper.py",
+    lambda t: re.sub(r"def keyboard\(\):.*\Z", "def keyboard():\n    return None\n", t, flags=re.S),
+)
+edit_file(
+    main_path,
+    lambda t: re.sub(
+        r'reply_markup=InlineKeyboardMarkup\(\s*\[\s*\[InlineKeyboardButton\("Cancel ❌", callback_data="cancel"\)\],\s*\]\s*\),\s*',
+        "",
+        t,
+    ),
+)
+edit_file(
+    pkg + "utility/handler.py",
+    lambda t: re.sub(
+        r"reply_markup=InlineKeyboardMarkup\(.*?\n\s*\]\n\s*\),\n", "", t, flags=re.S
+    ),
+)
 
-# no Git Repo / Channel / Group buttons on done and stopped messages
-edit_file(pkg + "utility/handler.py", lambda t: re.sub(
-    r"reply_markup=InlineKeyboardMarkup\(.*?\n\s*\]\n\s*\),\n", "", t, flags=re.S))
-
-# PATCH 4 - queue: links sent while busy start automatically one after another
-NEW_HANDLER4 = r'''link_queue = []
+# PATCH 4 - Queue handling
+NEW_HANDLER4 = r"""link_queue = []
 
 async def drain_queue():
     global BOT, MSG, BotTimes
@@ -185,43 +208,48 @@ async def drain_queue():
         except BaseException:
             pass
         BOT.State.task_going = False
-'''
+"""
+
 
 def add_queue(s):
-    old_busy = '''        await message.delete()
+  old_busy = """        await message.delete()
         await message.reply_text(
             "<i>I am Already Working ! Please Wait Until I finish 😣!!</i>"
         )
-'''
-    new_busy = '''        lines = [x.strip() for x in message.text.splitlines() if x.strip()]
+"""
+  new_busy = """        lines = [x.strip() for x in message.text.splitlines() if x.strip()]
         note = await message.reply_text(
             f"<i>⏳ Queued (position {len(link_queue) + 1}). I will start it automatically.</i>",
             quote=True,
         )
         link_queue.append((lines, note))
-'''
-    assert old_busy in s
-    s = s.replace(old_busy, new_busy, 1)
-    marker = "@colab_bot.on_message(filters.create(isLink)"
-    s = s.replace(marker, NEW_HANDLER4 + marker, 1)
-    old_end = "        await BOT.TASK\n        BOT.State.task_going = False\n"
-    new_end = '''        try:
+"""
+  assert old_busy in s
+  s = s.replace(old_busy, new_busy, 1)
+  marker = "@colab_bot.on_message(filters.create(isLink)"
+  s = s.replace(marker, NEW_HANDLER4 + marker, 1)
+  old_end = "        await BOT.TASK\n        BOT.State.task_going = False\n"
+  new_end = """        try:
             await BOT.TASK
         except BaseException:
             pass
         BOT.State.task_going = False
         await drain_queue()
-'''
-    assert old_end in s
-    s = s.replace(old_end, new_end, 1)
-    return s
+"""
+  assert old_end in s
+  s = s.replace(old_end, new_end, 1)
+  return s
+
 
 edit_file(main_path, add_queue)
 
 session = os.path.join(leecher_dir, "my" + us + "bot.session")
 if os.path.exists(session):
-    os.remove(session)
+  os.remove(session)
 
-print("🔄 Starting Telegram Leech Bot on Render...")
+print(
+    "🤖 [4/4] Setup complete! Launching Telegram Leech Bot...",
+    flush=True,
+)
 os.chdir(leecher_dir)
 subprocess.run(["python3", "-m", "colab_leecher"], check=True)
